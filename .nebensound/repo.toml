@@ -1,0 +1,49 @@
+[repo]
+audience = "public"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c1]
+path     = "units/c1"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c2]
+path     = "units/c2"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c3]
+path     = "units/c3"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c4]
+path     = "units/c4"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c5]
+path     = "units/c5"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c6]
+path     = "units/c6"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c7]
+path     = "units/c7"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c8]
+path     = "units/c8"
+pipeline = "none"
+minimum-version = "1.0.0"
+
+[component.c9]
+path     = "units/c9"
+pipeline = "none"
+minimum-version = "1.0.0"
