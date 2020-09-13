@@ -29,7 +29,7 @@ pipeline = "none"
 minimum-version = "1.0.0"
 
 [component.c6]
-path     = "units/c6"
+path     = "units/c6-m5"
 pipeline = "none"
 minimum-version = "1.0.0"
 
