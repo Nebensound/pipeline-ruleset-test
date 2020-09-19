@@ -44,6 +44,6 @@ pipeline = "none"
 minimum-version = "1.0.0"
 
 [component.c9]
-path     = "units/c9-m71"
+path     = "units/c9-m80"
 pipeline = "none"
 minimum-version = "1.0.0"
