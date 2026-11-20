@@ -1,0 +1,23 @@
+# Stand-in for the central workflow: reports the three required names and
+# checks nothing. It exists to measure the rulesets.
+name: nebensound
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo version
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo check
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build
