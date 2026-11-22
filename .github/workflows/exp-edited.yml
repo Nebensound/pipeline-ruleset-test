@@ -1,9 +1,0 @@
-name: exp-edited
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, edited]
-jobs:
-  j:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo experiment

@@ -1,7 +1,0 @@
-name: exp-default
-on: pull_request
-jobs:
-  j:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo experiment
