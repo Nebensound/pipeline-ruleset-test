@@ -1,0 +1,12 @@
+name: probe
+on:
+  push:
+    branches: [main, pre, 'pre-*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  probe-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo probe
