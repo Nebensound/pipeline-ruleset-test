@@ -1,0 +1,41 @@
+name: probe
+on:
+  push:
+    branches: [pre, 'pre-*']
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EV_CREATED: ${{ github.event.created }}
+          EV_BEFORE: ${{ github.event.before }}
+          EV_AFTER: ${{ github.event.after }}
+          EV_REF: ${{ github.event.ref }}
+          EV_PUSHER: ${{ github.event.pusher.name }}
+          EV_SENDER: ${{ github.event.sender.login }}
+        run: |
+          ts() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+          echo "$(ts) created=$EV_CREATED before=$EV_BEFORE after=$EV_AFTER ref=$EV_REF pusher=$EV_PUSHER sender=$EV_SENDER"
+          git fetch origin main:refs/remotes/origin/main 2>&1 || true
+          SHAS=$(git rev-list --first-parent origin/main..HEAD)
+          echo "$(ts) walk: $(echo $SHAS | tr '\n' ' ')"
+          echo "$(ts) head=$(git rev-parse HEAD)"
+          for round in 1 2 3; do
+            [ $round = 2 ] && sleep 5
+            [ $round = 3 ] && sleep 15
+            echo "$(ts) === round $round ==="
+            for s in $SHAS; do
+              p=$(gh api "repos/$REPO/commits/$s/pulls" --jq '[.[]|{number,state,merged_at,base:.base.ref,head:.head.ref}]' -H 'Accept: application/vnd.github+json' 2>&1 | tr -d '\n')
+              c=$(gh api "repos/$REPO/commits/$s" --jq '{committer_login:.committer.login,committer_name:.commit.committer.name,verified:.commit.verification.verified,reason:.commit.verification.reason,parents:(.parents|length)}' 2>&1 | tr -d '\n')
+              echo "$(ts) $s pulls=$p commit=$c"
+            done
+          done
