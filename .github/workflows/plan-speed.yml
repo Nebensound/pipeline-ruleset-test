@@ -114,16 +114,17 @@ jobs:
               printf '%s\t%s\trun %s\texit %s\t%.3f\n' "$dir" "$label" "$run" "$status" "$(echo "$e - $s" | bc)" | tee -a "$RUNNER_TEMP/times.tsv"
             done
           }
+          packs() { find "$1/.git/objects/pack" -name '*.pack' | wc -l; }
           for dir in full shallow blobless; do
-            packs_before="$(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+            packs_before="$(packs "$dir")"
             measure "$dir" check check --name=synthetic --default-branch=main --visibility=public
-            packs_after_check="$(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+            packs_after_check="$(packs "$dir")"
             measure "$dir" plan plan
             measure "$dir" plan-pr plan --pull-request 7 "--message=$MESSAGE"
             measure "$dir" version version
             measure "$dir" version-pr version --pull-request 7 "--message=$MESSAGE"
             measure "$dir" files files markdown .
-            echo "$dir: packs before $packs_before, after the first check $packs_after_check, now $(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+            echo "$dir: packs before $packs_before, after the first check $packs_after_check, now $(packs "$dir")"
           done
           if [ -x /usr/bin/time ]; then
             /usr/bin/time -v "$TOOL" -C full plan > /dev/null 2> "$RUNNER_TEMP/peak.txt" || true
