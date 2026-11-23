@@ -1,0 +1,77 @@
+# Platform experiment: how the runner treats workflow commands while command
+# processing is stopped with ::stop-commands::. Checks nothing; it only
+# produces annotations and log lines to be read afterwards.
+name: stop-commands-experiment
+on:
+  push:
+    branches: [experiment/stop-commands]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "1 control, commands not stopped"
+        run: |
+          echo "::warning::control-a"
+          echo "text ##[warning]control-b"
+          echo "x::warning::control-c"
+
+      - name: "2 stopped region"
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::${token}"
+          echo "::warning::stopped-a"
+          echo "   ::error::stopped-b"
+          echo "text ##[warning]stopped-c"
+          echo "##[error]stopped-d"
+          echo "::group::stopped-e"
+          echo "##[group]stopped-f"
+          echo "::add-mask::stopped-g"
+          echo "this line holds stopped-g"
+          echo "::notice file=README.md,line=1::stopped-h"
+          echo "::${token}::"
+          echo "::notice::after-resume"
+
+      - name: "3a bare carriage return, not stopped"
+        run: |
+          printf 'prefix-text\r::warning::after-cr\n'
+          echo "::notice::step-3a-end"
+
+      - name: "3b bare carriage return, stopped"
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::${token}"
+          printf 'prefix-text\r::warning::after-cr-stopped\n'
+          echo "::${token}::"
+          echo "::notice::step-3b-end"
+
+      - name: "5 older form of the resume token"
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::${token}"
+          echo "::warning::step-5-still-stopped"
+          echo "text ##[${token}]"
+          echo "::notice::resumed-by-older-form"
+
+      - name: "4a stop and do not resume"
+        run: |
+          token="$(openssl rand -hex 16)"
+          printf '%s' "${token}" > "${RUNNER_TEMP}/stop-token"
+          echo "::stop-commands::${token}"
+          echo "::warning::step-4a-still-stopped"
+
+      - name: "4b next step"
+        run: |
+          echo "::warning::next-step"
+
+      - name: "4c third step resumes"
+        run: |
+          token="$(cat "${RUNNER_TEMP}/stop-token")"
+          echo "::${token}::"
+          echo "::notice::resumed-in-third-step"
+
+      - name: "end"
+        run: |
+          echo "::notice::job-end"
