@@ -1,0 +1,175 @@
+name: plan-speed
+
+# Measures how long nebensound-repo takes on a synthetic history of 10,000
+# commits with 10 units (the declaration moves a unit every 100 commits), and
+# how long the three checkout forms take. Runs on a push to this branch only.
+
+on:
+  push:
+    branches:
+      - experiment/plan-speed-10k
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Measure (repetition ${{ matrix.repetition }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3]
+
+    steps:
+      - name: Stamp before checkout fetch-depth 0
+        run: date +%s.%N > "$RUNNER_TEMP/t0"
+
+      - name: Checkout fetch-depth 0
+        uses: actions/checkout@v7
+        with:
+          path: full
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Stamp before checkout fetch-depth 1
+        run: date +%s.%N > "$RUNNER_TEMP/t1"
+
+      - name: Checkout fetch-depth 1
+        uses: actions/checkout@v7
+        with:
+          path: shallow
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Stamp before checkout fetch-depth 0 blob:none
+        run: date +%s.%N > "$RUNNER_TEMP/t2"
+
+      - name: Checkout fetch-depth 0 with filter blob:none
+        uses: actions/checkout@v7
+        with:
+          path: blobless
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Report the checkout times
+        run: |
+          set -euo pipefail
+          t3="$(date +%s.%N)"
+          t0="$(cat "$RUNNER_TEMP/t0")"; t1="$(cat "$RUNNER_TEMP/t1")"; t2="$(cat "$RUNNER_TEMP/t2")"
+          {
+            printf 'checkout\tfetch-depth 0\t%.3f\n' "$(echo "$t1 - $t0" | bc)"
+            printf 'checkout\tfetch-depth 1\t%.3f\n' "$(echo "$t2 - $t1" | bc)"
+            printf 'checkout\tfetch-depth 0, blob:none\t%.3f\n' "$(echo "$t3 - $t2" | bc)"
+          } | tee "$RUNNER_TEMP/times.tsv"
+          for dir in full shallow blobless; do
+            echo "== $dir: $(git -C "$dir" rev-list --count HEAD) commits reachable, shallow=$(git -C "$dir" rev-parse --is-shallow-repository), .git $(du -sh "$dir/.git" | cut -f1)"
+            git -C "$dir" count-objects -v
+          done
+
+      - name: Check out the pipeline's main
+        uses: actions/checkout@v7
+        with:
+          repository: Nebensound/pipeline
+          ref: main
+          path: pipeline
+          persist-credentials: false
+
+      - name: Install the pinned toolchain
+        working-directory: pipeline/tools/nebensound-repo
+        run: |
+          set -euo pipefail
+          s="$(date +%s.%N)"
+          rustup toolchain install
+          printf 'build\trustup toolchain install\t%.3f\n' "$(echo "$(date +%s.%N) - $s" | bc)" | tee -a "$RUNNER_TEMP/times.tsv"
+
+      - name: Build the tool without a cache
+        working-directory: pipeline/tools/nebensound-repo
+        run: |
+          set -euo pipefail
+          git -C "$GITHUB_WORKSPACE/pipeline" rev-parse HEAD
+          s="$(date +%s.%N)"
+          cargo build --release --locked
+          printf 'build\tcargo build --release --locked\t%.3f\n' "$(echo "$(date +%s.%N) - $s" | bc)" | tee -a "$RUNNER_TEMP/times.tsv"
+          echo "TOOL=$PWD/target/release/nebensound-repo" >> "$GITHUB_ENV"
+
+      - name: Time the commands
+        env:
+          MESSAGE: |-
+            feat: a pull request
+
+            Its body.
+        run: |
+          set -uo pipefail
+          measure() {
+            local dir="$1" label="$2"; shift 2
+            local run s e status
+            for run in 1 2 3; do
+              status=0
+              s="$(date +%s.%N)"
+              "$TOOL" -C "$dir" "$@" > "$RUNNER_TEMP/out-$dir-$label-$run.txt" 2>&1 || status=$?
+              e="$(date +%s.%N)"
+              printf '%s\t%s\trun %s\texit %s\t%.3f\n' "$dir" "$label" "$run" "$status" "$(echo "$e - $s" | bc)" | tee -a "$RUNNER_TEMP/times.tsv"
+            done
+          }
+          for dir in full shallow blobless; do
+            packs_before="$(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+            measure "$dir" check check --name=synthetic --default-branch=main --visibility=public
+            packs_after_check="$(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+            measure "$dir" plan plan
+            measure "$dir" plan-pr plan --pull-request 7 "--message=$MESSAGE"
+            measure "$dir" version version
+            measure "$dir" version-pr version --pull-request 7 "--message=$MESSAGE"
+            measure "$dir" files files markdown .
+            echo "$dir: packs before $packs_before, after the first check $packs_after_check, now $(ls "$dir"/.git/objects/pack/*.pack | wc -l)"
+          done
+          if [ -x /usr/bin/time ]; then
+            /usr/bin/time -v "$TOOL" -C full plan > /dev/null 2> "$RUNNER_TEMP/peak.txt" || true
+            grep -E 'Maximum resident|Elapsed' "$RUNNER_TEMP/peak.txt"
+          fi
+          exit 0
+
+      - name: Time the git commands the tool runs
+        working-directory: full
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          t() {
+            local label="$1"; shift
+            local s; s="$(date +%s.%N)"
+            "$@" > /dev/null
+            printf 'git\t%s\t%.3f\n' "$label" "$(echo "$(date +%s.%N) - $s" | bc)" | tee -a "$RUNNER_TEMP/times.tsv"
+          }
+          t "rev-list --parents" git rev-list --parents "$head"
+          t "log --first-parent --raw" git -c log.showRoot=true log --first-parent --diff-merges=first-parent -z --raw --no-abbrev --no-renames --no-relative --ignore-submodules=none --no-color --no-notes --no-show-signature --encoding=UTF-8 '--format=%x00%H%x00%P%x00%B' "$head"
+          t "ls-tree -r" git ls-tree -r -z --name-only --full-tree "$head"
+          t "ls-files --stage" git ls-files -z --stage
+          echo "declaration blobs on the line: $(git log --first-parent --format= --raw --no-abbrev "$head" -- .nebensound/repo.toml | awk '{print $4}' | sort -u | wc -l)"
+
+      - name: Compare the answers
+        run: |
+          set -uo pipefail
+          for label in check plan plan-pr version version-pr; do
+            for dir in shallow blobless; do
+              if cmp -s "$RUNNER_TEMP/out-full-$label-1.txt" "$RUNNER_TEMP/out-$dir-$label-1.txt"; then
+                echo "$label: $dir answers the same as full"
+              else
+                echo "$label: $dir answers differently from full:"
+                diff "$RUNNER_TEMP/out-full-$label-1.txt" "$RUNNER_TEMP/out-$dir-$label-1.txt" | head -40
+              fi
+            done
+          done
+          echo "== version on full"; cat "$RUNNER_TEMP/out-full-version-1.txt"
+          echo "== version on shallow"; cat "$RUNNER_TEMP/out-shallow-version-1.txt"
+          echo "== plan on shallow"; cat "$RUNNER_TEMP/out-shallow-plan-1.txt"
+
+      - name: Summary
+        run: |
+          {
+            echo '```'
+            cat "$RUNNER_TEMP/times.tsv"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/times.tsv"
